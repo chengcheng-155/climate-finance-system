@@ -7,7 +7,7 @@ from streamlit_gsheets import GSheetsConnection
 # 0. 页面与状态配置
 # ==========================================
 st.set_page_config(page_title="政府管理端 | 气候投融资", page_icon="🏛️", layout="wide")
-st.title("🏛️ 气候投融资 - 政府动态管理大屏")
+st.title("🏛️ 气候投融资 - 动态管理")
 
 # ⚠️ 请将此处替换为您自己的 Google Sheets 表格链接（需与企业端一致）
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1i1wzfAKODzm2BzhCE9T7JMEeOagtdXxVfTr5r3GvniA/edit?gid=0#gid=0"
