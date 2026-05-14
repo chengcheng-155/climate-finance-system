@@ -16,7 +16,7 @@ SHEET_URL = "https://docs.google.com/spreadsheets/d/您的表格ID/edit"
 
 
 # ==========================================
-# 1. 读取行业先进值附件 (自动适配云端/本地路径)
+# 1. 读取特色产业集群附件 (已移除行业先进值读取)
 # ==========================================
 @st.cache_data
 def load_excel_data():
@@ -25,7 +25,6 @@ def load_excel_data():
         data_path = "气候投融资项目评估指南附件.xlsx"
 
     clusters = []
-    industry_dict = {}
 
     try:
         xls = pd.ExcelFile(data_path)
@@ -33,26 +32,14 @@ def load_excel_data():
             df_clusters = pd.read_excel(xls, sheet_name='特色产业集群名单')
             raw_clusters = df_clusters['产业集群名称'].dropna().astype(str).str.strip().unique().tolist()
             clusters = [c for c in raw_clusters if c]
-
-        if '行业碳排放强度先进值' in xls.sheet_names:
-            df_ind = pd.read_excel(xls, sheet_name='行业碳排放强度先进值', header=2)
-            df_ind = df_ind.dropna(subset=[df_ind.columns[1], df_ind.columns[4]])
-            for _, row in df_ind.iterrows():
-                try:
-                    ind_name = str(row.iloc[1]).strip()
-                    ind_val = float(str(row.iloc[4]).strip())
-                    if ind_name: industry_dict[ind_name] = ind_val
-                except:
-                    continue
     except:
         st.sidebar.error("⚠️ 读取附件失败，请确保 Excel 文件在仓库中。")
         clusters = ['新能源汽车产业集群']
-        industry_dict = {'测试行业A': 100.5}
 
-    return ['否'] + clusters, industry_dict, ["手动输入先进值 (不在列表中)"] + list(industry_dict.keys())
+    return ['否'] + clusters
 
 
-feature_options, industry_dict, industry_options = load_excel_data()
+feature_options = load_excel_data()
 
 # ==========================================
 # 2. 前端界面布局
@@ -69,14 +56,11 @@ with col2:
     # 项目大类选择
     category = st.selectbox("1. 减排量项目大类 (必选)", ["分布式发电", "集中式发电", "其他减缓类"])
     val_reduction = st.number_input("指标 1：年碳减排量 (万吨)", min_value=0.0, value=0.0, format="%.4f")
-    val_intensity = st.number_input("指标 2：项目实际碳排放强度 (比值)", min_value=0.0, value=0.0, format="%.4f")
-    val_decrease = st.number_input("指标 3：强度下降幅度 (%)", min_value=0.0, value=0.0, format="%.4f")
+    val_decrease = st.number_input("指标 2：强度下降幅度 (%)", min_value=0.0, value=0.0, format="%.4f")
 
 with col1:
-    st.subheader("📝 基础与行业信息")
+    st.subheader("📝 基础与政策信息")
     project_name = st.text_input("项目全称", placeholder="请输入项目全称")
-
-    # 修改点：更新为用户指定的 5 类绿色通道标准
     green_channel = st.selectbox("绿色通道审查标准",
                                  ["否",
                                   "典型负碳项目",
@@ -87,17 +71,8 @@ with col1:
 
     feature_industry = st.selectbox("特色产业集群 (1.05倍加权)", feature_options)
 
-    selected_industry = st.selectbox("所属行业", industry_options)
-    if selected_industry == "手动输入先进值 (不在列表中)":
-        baseline_value = st.number_input("行业先进值基准 (手动输入)", min_value=0.0, format="%.4f")
-        db_industry_name = "其他(手动输入)"
-    else:
-        auto_val = industry_dict.get(selected_industry, 0)
-        baseline_value = st.number_input(f"系统匹配【{selected_industry}】先进值", value=float(auto_val), format="%.4f")
-        db_industry_name = selected_industry
-
     # ==========================================
-    # 动态展示《指南》三级定量评估细则
+    # 动态展示《指南》定量评估细则 (已移除碳排放强度标准)
     # ==========================================
     st.markdown("---")
     # 计算减排量门槛
@@ -116,12 +91,7 @@ with col1:
     - 🟡 **中绿级**：**{th_mid}** 万吨 ≤ 年减排量 < **{th_deep}** 万吨
     - ⚪ **浅绿级**：年减排量 < **{th_mid}** 万吨
 
-    **2. 碳排放强度 (减排技术先进性)**:
-    - 🟢 **深绿级**：项目强度 ≤ **{baseline_value:.4f}** (行业先进值)
-    - 🟡 **中绿级**：**{baseline_value:.4f}** < 项目强度 ≤ **{baseline_value * 1.25:.4f}** (先进值×1.25)
-    - ⚪ **浅绿级**：项目强度 > **{baseline_value * 1.25:.4f}**
-
-    **3. 碳排放强度下降幅度**:
+    **2. 碳排放强度下降幅度**:
     - 🟢 **深绿级**：下降幅度 ≥ **4%**
     - 🟡 **中绿级**：**3%** ≤ 下降幅度 < **4%**
     - ⚪ **浅绿级**：下降幅度 < **3%**
@@ -134,7 +104,7 @@ st.markdown("---")
 if st.button("🚀 提交评估并同步至云端", use_container_width=True):
     if not project_name:
         st.warning("⚠️ 请填写项目名称！")
-    elif val_reduction == 0 and val_intensity == 0 and val_decrease == 0 and green_channel == "否":
+    elif val_reduction == 0 and val_decrease == 0 and green_channel == "否":
         st.warning("⚠️ 请至少填写一项评估指标或符合绿色通道！")
     else:
         with st.spinner('正在计算评分并连接云端数据库...'):
@@ -144,9 +114,6 @@ if st.button("🚀 提交评估并同步至云端", use_container_width=True):
             if val_reduction > 0:
                 th_base = 3 if category == "分布式发电" else 10 if category == "集中式发电" else 0.5
                 c_scores.append((val_reduction / th_base) * 100)
-
-            if val_intensity > 0 and baseline_value > 0:
-                c_scores.append((baseline_value / val_intensity) * 100)
 
             if val_decrease > 0:
                 c_scores.append((val_decrease / 4.0) * 100)
@@ -178,11 +145,11 @@ if st.button("🚀 提交评估并同步至云端", use_container_width=True):
                     '项目ID': str(uuid.uuid4())[:8],
                     '申报日期': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     '项目名称': project_name,
-                    '所属行业': db_industry_name,
+                    '所属行业': "不适用",  # 为了不破坏数据库结构，保持默认填入
                     '项目大类': category,
                     '绿色通道': green_channel,
                     '是否特色产业': feature_industry,
-                    '实际碳排放强度': val_intensity if val_intensity > 0 else np.nan,
+                    '实际碳排放强度': np.nan,  # 同上，废弃字段置空
                     '气候效益综合分': final_score,
                     '初评等级(绝对)': final_level,
                     '一票否决(环保违规)': False
