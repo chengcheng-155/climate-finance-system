@@ -39,7 +39,6 @@ def load_excel_data():
 feature_options = load_excel_data()
 
 
-# 封装写库函数，避免代码重复
 def save_to_database(project_name, category, green_channel, feature_industry, final_score, final_level):
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
@@ -74,7 +73,6 @@ st.markdown("---")
 st.subheader("📝 基础与政策信息")
 project_name = st.text_input("项目全称", placeholder="请输入项目全称")
 
-# 增加“请选择...”作为默认项，控制下方界面的显示
 green_channel = st.selectbox("绿色通道审查标准",
                              ["请选择...",
                               "否",
@@ -85,131 +83,151 @@ green_channel = st.selectbox("绿色通道审查标准",
                               "赋能支撑类项目"])
 
 # ---------------------------------------------------------
-# 情境 A：用户还未选择，等待中
+# 情境 A：等待选择
 # ---------------------------------------------------------
 if green_channel == "请选择...":
     st.info("👆 请先输入项目名称，并选择是否符合绿色通道审查标准。")
 
-# ---------------------------------------------------------
-# 情境 B：符合绿色通道 (直接深绿，无需填后续指标)
-# ---------------------------------------------------------
-elif green_channel != "否":
-    st.success(f"🎉 **恭喜！该项目符合【{green_channel}】审查标准，直接触发绿色通道，无需填写其他量化指标。**")
-    st.info("### 🎯 综合初评等级：深绿级 (100分)")
+else:
+    # ---------------------------------------------------------
+    # 动态提示词与确认环节
+    # ---------------------------------------------------------
+    if green_channel != "否":
+        st.success(f"🎉 **该项目符合【{green_channel}】标准，已触发绿色通道，保底获得 深绿级（100分）。**")
+        radio_text = "❓ 是否继续填写【定量指标】及【特色产业】信息，以争取更高分进行同行业排名？"
+    else:
+        st.warning("⚠️ **该项目未触发绿色通道，目前初始评分为 0 分。**")
+        radio_text = "❓ 是否继续填写【定量指标】及【特色产业】信息，以获取评级？"
 
-    st.markdown("---")
-    if st.button("🚀 提交评估并同步至云端", use_container_width=True):
-        if not project_name:
-            st.warning("⚠️ 请填写项目名称！")
+    continue_fill = st.radio(radio_text, ["请选择...", "是，继续填写争取最高分", "否，直接生成当前结果并提交"])
+
+    # ---------------------------------------------------------
+    # 情境 B：用户选择【否】，直接出结果
+    # ---------------------------------------------------------
+    if continue_fill == "否，直接生成当前结果并提交":
+        final_score = 100.0 if green_channel != "否" else 0.0
+        final_level = "深绿级" if final_score >= 100 else "浅绿级"
+
+        st.markdown("---")
+        st.subheader("🏆 最终初评报告")
+        st.markdown(f"**项目名称**: {project_name}")
+        st.markdown(f"**气候效益综合得分**: `{final_score} 分`")
+        if final_level == "深绿级":
+            st.success(f"### 综合初评等级：{final_level}")
         else:
-            with st.spinner('正在同步云端数据库...'):
-                success, error_msg = save_to_database(
-                    project_name=project_name,
-                    category="绿色通道免评",
-                    green_channel=green_channel,
-                    feature_industry="不适用",
-                    final_score=100.0,
-                    final_level="深绿级"
-                )
-                if success:
-                    st.success("✅ **评估数据已成功同步至政府管理云端数据库。**")
-                    st.balloons()
-                else:
-                    st.error(f"⚠️ 云端同步失败。错误: {error_msg}")
+            st.warning(f"### 综合初评等级：未通过指标考核 / 浅绿级")
 
-# ---------------------------------------------------------
-# 情境 C：不符合绿色通道 (选了“否”，展开进阶指标填写区)
-# ---------------------------------------------------------
-elif green_channel == "否":
-    st.markdown("---")
-    st.subheader("📍 进阶评估信息")
+        if st.button("🚀 确认提交并同步至云端", use_container_width=True):
+            if not project_name:
+                st.warning("⚠️ 请填写项目名称！")
+            else:
+                with st.spinner('正在同步云端数据库...'):
+                    c_type = "绿色通道免评" if green_channel != "否" else "未填报定量指标"
+                    success, error_msg = save_to_database(project_name, c_type, green_channel, "否", final_score,
+                                                          final_level)
+                    if success:
+                        st.success("✅ **评估数据已成功同步至政府管理云端数据库。**")
+                        st.balloons()
+                    else:
+                        st.error(f"⚠️ 云端同步失败。错误: {error_msg}")
 
-    col1, col2 = st.columns([1.1, 1])
+    # ---------------------------------------------------------
+    # 情境 C：用户选择【是】，展开进阶表单
+    # ---------------------------------------------------------
+    elif continue_fill == "是，继续填写争取最高分":
+        st.markdown("---")
+        st.subheader("📍 进阶评估信息")
 
-    with col1:
-        st.markdown("##### 🏭 产业协同")
-        feature_industry = st.selectbox("特色产业集群 (享受1.05倍加权)", feature_options)
+        col1, col2 = st.columns([1.1, 1])
 
-        # 定量评估细则参考 (保持不变)
-        st.markdown("<br>", unsafe_allow_html=True)
-        category_for_guide = st.selectbox("减排量项目大类 (用于查看下方细则参考)",
-                                          ["分布式发电", "集中式发电", "其他减缓类"], key="guide_cat")
-        if category_for_guide == "分布式发电":
-            th_deep, th_mid = 3.0, 1.0
-        elif category_for_guide == "集中式发电":
-            th_deep, th_mid = 10.0, 5.0
-        else:
-            th_deep, th_mid = 0.5, 0.1
+        with col2:
+            st.markdown("##### 📊 核心评估指标填写")
+            st.info("💡 **提示**：选填一项或多项。系统将比对基础分与指标分，自动取 **最高分** 记录。")
 
-        st.success(f"""
-        📌 **《指南》项目定量评估细则参考 (对应 {category_for_guide}类)**:
+            category = st.selectbox("1. 减排量项目大类 (必选)", ["分布式发电", "集中式发电", "其他减缓类"])
+            val_reduction = st.number_input("指标 1：年碳减排量 (万吨)", min_value=0.0, value=0.0, format="%.4f")
+            val_decrease = st.number_input("指标 2：强度下降幅度 (%)", min_value=0.0, value=0.0, format="%.4f")
 
-        **1. 碳减排规模效益**:
-        - 🟢 **深绿级**：年减排量 ≥ **{th_deep}** 万吨
-        - 🟡 **中绿级**：**{th_mid}** 万吨 ≤ 年减排量 < **{th_deep}** 万吨
-        - ⚪ **浅绿级**：年减排量 < **{th_mid}** 万吨
+        with col1:
+            st.markdown("##### 🏭 产业协同")
+            feature_industry = st.selectbox("特色产业集群 (享受 1.05 倍加权)", feature_options)
 
-        **2. 碳排放强度下降幅度**:
-        - 🟢 **深绿级**：下降幅度 ≥ **4%**
-        - 🟡 **中绿级**：**3%** ≤ 下降幅度 < **4%**
-        - ⚪ **浅绿级**：下降幅度 < **3%**
-        """)
+            # 定量评估细则参考
+            st.markdown("<br>", unsafe_allow_html=True)
+            if category == "分布式发电":
+                th_deep, th_mid = 3.0, 1.0
+            elif category == "集中式发电":
+                th_deep, th_mid = 10.0, 5.0
+            else:
+                th_deep, th_mid = 0.5, 0.1
 
-    with col2:
-        st.markdown("##### 📊 核心评估指标填写")
-        st.info("💡 **提示**：选填一项或多项指标。系统将自动选取最强优势指标作为定级依据。")
+            st.success(f"""
+            📌 **《指南》项目定量评估细则参考 (对应 {category}类)**:
 
-        # 实际填写的分类（与左侧联动显示一致）
-        category = st.selectbox("1. 减排量项目大类 (必选)", ["分布式发电", "集中式发电", "其他减缓类"],
-                                index=["分布式发电", "集中式发电", "其他减缓类"].index(st.session_state.guide_cat))
-        val_reduction = st.number_input("指标 1：年碳减排量 (万吨)", min_value=0.0, value=0.0, format="%.4f")
-        val_decrease = st.number_input("指标 2：强度下降幅度 (%)", min_value=0.0, value=0.0, format="%.4f")
+            **1. 碳减排规模效益**:
+            - 🟢 **深绿级**：年减排量 ≥ **{th_deep}** 万吨
+            - 🟡 **中绿级**：**{th_mid}** 万吨 ≤ 年减排量 < **{th_deep}** 万吨
+            - ⚪ **浅绿级**：年减排量 < **{th_mid}** 万吨
 
-    st.markdown("---")
-    if st.button("🚀 提交评估并同步至云端", use_container_width=True):
-        if not project_name:
-            st.warning("⚠️ 请填写项目名称！")
-        elif val_reduction == 0 and val_decrease == 0:
-            st.warning("⚠️ 请至少填写一项具体的评估指标！")
-        else:
-            with st.spinner('正在计算评分并连接云端数据库...'):
-                weight = 1.05 if feature_industry != "否" else 1.0
-                c_scores = []
+            **2. 碳排放强度下降幅度**:
+            - 🟢 **深绿级**：下降幅度 ≥ **4%**
+            - 🟡 **中绿级**：**3%** ≤ 下降幅度 < **4%**
+            - ⚪ **浅绿级**：下降幅度 < **3%**
+            """)
 
-                if val_reduction > 0:
-                    th_base = 3 if category == "分布式发电" else 10 if category == "集中式发电" else 0.5
-                    c_scores.append((val_reduction / th_base) * 100)
+        st.markdown("---")
+        if st.button("🚀 提交评估并同步至云端", use_container_width=True):
+            if not project_name:
+                st.warning("⚠️ 请填写项目名称！")
+            elif val_reduction == 0 and val_decrease == 0 and green_channel == "否":
+                st.warning("⚠️ 既然选择了继续填写，请至少填报一项定量指标数据！")
+            else:
+                with st.spinner('正在计算评分并连接云端数据库...'):
+                    weight = 1.05 if feature_industry != "否" else 1.0
+                    c_scores = []
 
-                if val_decrease > 0:
-                    c_scores.append((val_decrease / 4.0) * 100)
+                    if val_reduction > 0:
+                        th_base = 3 if category == "分布式发电" else 10 if category == "集中式发电" else 0.5
+                        c_scores.append((val_reduction / th_base) * 100)
 
-                base_score = max(c_scores) if c_scores else 0
-                final_score = round(base_score * weight, 2)
-                final_level = "深绿级" if final_score >= 100 else "中绿级" if final_score >= 60 else "浅绿级"
+                    if val_decrease > 0:
+                        c_scores.append((val_decrease / 4.0) * 100)
 
-                # 展示本次计算结果
-                st.subheader("🏆 最终初评报告")
-                st.markdown(f"**项目名称**: {project_name}")
-                st.markdown(f"**气候效益综合得分**: `{final_score} 分` (已应用权重加成)")
-                if final_level == "深绿级":
-                    st.success(f"### 综合初评等级：{final_level}")
-                elif final_level == "中绿级":
-                    st.info(f"### 综合初评等级：{final_level}")
-                else:
-                    st.warning(f"### 综合初评等级：{final_level}")
+                    # 提取填报指标计算出的最高分
+                    max_indicator_score = max(c_scores) if c_scores else 0
 
-                # 写入数据库
-                success, error_msg = save_to_database(
-                    project_name=project_name,
-                    category=category,
-                    green_channel=green_channel,
-                    feature_industry=feature_industry,
-                    final_score=final_score,
-                    final_level=final_level
-                )
+                    # 取最高分记录机制：指标得分 VS 绿色通道保底分(100分)
+                    base_score = max_indicator_score
+                    if green_channel != "否":
+                        base_score = max(max_indicator_score, 100)
 
-                if success:
-                    st.success("✅ **评估数据已成功同步至政府管理云端数据库。**")
-                    st.balloons()
-                else:
-                    st.error(f"⚠️ 云端同步失败。错误: {error_msg}")
+                    final_score = round(base_score * weight, 2)
+                    final_level = "深绿级" if final_score >= 100 else "中绿级" if final_score >= 60 else "浅绿级"
+
+                    # 展示本次计算结果
+                    st.subheader("🏆 最终初评报告")
+                    st.markdown(f"**项目名称**: {project_name}")
+                    st.markdown(f"**气候效益综合得分**: `{final_score} 分` (已取最高维度分数并应用加权)")
+
+                    if final_level == "深绿级":
+                        st.success(f"### 综合初评等级：{final_level}")
+                    elif final_level == "中绿级":
+                        st.info(f"### 综合初评等级：{final_level}")
+                    else:
+                        st.warning(f"### 综合初评等级：{final_level}")
+
+                    # 写入数据库
+                    success, error_msg = save_to_database(
+                        project_name=project_name,
+                        category=category,
+                        green_channel=green_channel,
+                        feature_industry=feature_industry,
+                        final_score=final_score,
+                        final_level=final_level
+                    )
+
+                    if success:
+                        st.success("✅ **评估数据已成功同步至政府管理云端数据库。**")
+                        st.balloons()
+                    else:
+                        st.error(f"⚠️ 云端同步失败。错误: {error_msg}")
