@@ -97,26 +97,3 @@ if db_connected:
                 st.error("#### ⚠️ 末位淘汰督办预警")
                 st.markdown("以下项目因效益垫底触发 **1% 淘汰红线**，请依法下发整改/申诉通知：")
                 st.dataframe(elimination_df[['项目名称', '所属行业', '气候效益综合分', '行业击败率']], hide_index=True)
-
-            st.markdown("---")
-
-            # ==========================================
-            # 5. 基准线动态更新
-            # ==========================================
-            st.subheader("🔄 行业先进性参考基准 (系统自学习迭代)")
-            st.markdown("自动提取当年 **深绿/中绿** 级项目的真实填报碳排放强度，求平均值作为明年新基准。")
-
-            valid_df['实际碳排放强度'] = pd.to_numeric(valid_df['实际碳排放强度'], errors='coerce')
-            benchmark_df = valid_df[
-                valid_df['年度动态评级'].isin(['🟢 动态深绿', '🟡 动态中绿']) & valid_df['实际碳排放强度'].notna()]
-
-            if len(benchmark_df) > 0:
-                new_baseline = benchmark_df.groupby('所属行业')['实际碳排放强度'].mean().reset_index()
-                new_baseline.rename(columns={'实际碳排放强度': '下年度建议基准线 (平均强度)'}, inplace=True)
-
-                # 格式化输出
-                new_baseline['下年度建议基准线 (平均强度)'] = new_baseline['下年度建议基准线 (平均强度)'].apply(
-                    lambda x: f"{x:.4f}")
-                st.dataframe(new_baseline, use_container_width=True, hide_index=True)
-            else:
-                st.info("💡 当前已填报的项目中，暂无足够填写了“实际碳排放强度”的深绿/中绿样本，系统无法测算明年基准线。")
