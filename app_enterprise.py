@@ -83,21 +83,23 @@ project_name = st.text_input("项目全称", placeholder="请输入项目全称"
 green_channel = st.selectbox("绿色通道审查标准",
                              ["请选择...", "否", "典型负碳项目", "具有国家级/省部级政府认定支持的项目",
                               "可进行碳交易的项目", "与地方特色产业相融合的低碳项目", "赋能支撑类项目"])
+# ✨ 修改点 1：增加绿色通道政策直通说明
+st.caption("说明：满足以上任意一项条件即可直通‘深绿级’，各选项政策效力完全等同。")
 
 # 流程控制变量
 show_advanced = False
 force_deep_green = False
 
 if green_channel == "请选择...":
-    st.info("👆 请先输入项目名称，并选择是否符合绿色通道审查标准。")
+    st.info("💡 请先输入项目名称，并选择是否符合绿色通道审查标准。")
     st.stop()
 elif green_channel != "否":
-    # 🌟【修改点 1】：符合绿色通道标准，直接通关，彻底隐藏后续填报和询问
+    # 符合绿色通道标准，直接通关，彻底隐藏后续填报和询问
     force_deep_green = True
     st.success(f"🎉 **该项目符合【{green_channel}】标准，已直接获得深绿级入库资格。您可直接拉至底部点击提交。**")
     show_advanced = False
 else:
-    # 🌟【修改点 2】：只有选“否”时，才将展示开关设为 True，直接强制展开量化评估
+    # 只有选“否”时，才将展示开关设为 True，直接强制展开量化评估
     show_advanced = True
     force_deep_green = False
 
@@ -118,6 +120,8 @@ if show_advanced:
     with col1:
         st.markdown("##### 🏭 产业协同")
         feature_industry = st.selectbox("特色产业集群 (若符合，评估门槛将下调 5%)", feature_options)
+        # ✨ 修改点 2：做出相应调整，增加特色产业门槛下调红利说明
+        st.caption("说明：只要匹配以上任一特色产业集群，即可享受量化评估门槛下调 5% 的政策倾斜。")
 
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("##### 📊 核心评估指标填写")
