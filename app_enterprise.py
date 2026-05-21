@@ -15,7 +15,7 @@ from streamlit_gsheets import GSheetsConnection
 # ==========================================
 # 0. 页面与状态配置
 # ==========================================
-st.set_page_config(page_title="企业申报端 | 气候投融资系统", page_icon="🏢", layout="wide")
+st.set_page_config(page_title="生态环境部门 | 气候投融资系统", page_icon="🏢", layout="wide")
 
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1i1wzfAKODzm2BzhCE9T7JMEeOagtdXxVfTr5r3GvniA/edit"
 
@@ -73,7 +73,7 @@ def save_to_database(project_name, category, green_channel, feature_industry, fi
 # ==========================================
 # 2. 前端界面布局
 # ==========================================
-st.title("🏢 气候投融资项目 - 企业入库申报")
+st.title("🏢 气候投融资项目 - 入库填报")
 st.markdown("填写项目信息，系统将基于《气候投融资项目库分级评估指南》进行初评。")
 st.markdown("---")
 
@@ -122,7 +122,7 @@ if show_advanced:
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("##### 📊 核心评估指标填写")
         st.info("💡 系统采取“就高不就低”原则，会自动选取达标最高的指标作为最终评级。")
-        category = st.selectbox("1. 提交指标所属的大类", ["分布式发电", "集中式发电", "其他减缓类"])
+        category = st.selectbox("提交指标所属的大类", ["分布式发电", "集中式发电", "其他减缓类"])
         val_reduction = st.number_input("指标 1：年碳减排量 (万吨)", min_value=0.0, format="%.4f")
         val_decrease = st.number_input("指标 2：强度下降幅度 (%)", min_value=0.0, format="%.4f")
 
@@ -149,7 +149,7 @@ if show_advanced:
            📌 **《指南》项目定量评估细则参考 (对应【{category}】类)**:
            {'(✨ **已触发特色产业，各项达标门槛下调 5%**)' if adj_ratio < 1.0 else ''}
 
-           **1. 碳减排规模效益**:
+           **1. 年碳减排量**:
            - 🟢 **深绿级**：年减排量 ≥ **{th_deep_adj:.4g}** 万吨
            - 🟡 **中绿级**：**{th_mid_adj:.4g}** 万吨 ≤ 年减排量 < **{th_deep_adj:.4g}** 万吨
            - ⚪ **浅绿级**：年减排量 < **{th_mid_adj:.4g}** 万吨
