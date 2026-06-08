@@ -127,7 +127,7 @@ if app_mode == "生态环境部门 (入口A)":
 
     if any([n1, n2, n3, n4, n5, n6]):
         st.error("🚫 **触发负面清单**：该项目属于明确限制类/淘汰类产业，不符合气候投融资入库标准，流程已终止。")
-        st.stop()  # 触发一票否决，直接停止后续代码运行
+        st.stop()
 
     st.markdown("---")
     st.subheader("📝 基础信息")
@@ -193,21 +193,26 @@ if app_mode == "生态环境部门 (入口A)":
             adj_ratio = 0.95 if feature_industry != "否" else 1.0
 
             if industry_type == "集中式可再生能源发电":
-                th_deep, th_mid = 10.0, 5.0
+                th_deep, th_mid, th_light = 10.0, 5.0, 0.0
             elif industry_type == "分布式可再生能源发电":
-                th_deep, th_mid = 3.0, 1.0
+                th_deep, th_mid, th_light = 3.0, 1.0, 0.0
             elif industry_type == "工业节能减排":
-                th_deep, th_mid = 5.0, 1.0
+                th_deep, th_mid, th_light = 5.0, 1.0, 0.1
             elif industry_type == "建筑节能与绿色建筑":
-                th_deep, th_mid = 0.3, 0.05
+                th_deep, th_mid, th_light = 0.3, 0.05, 0.01
             else:  # 储能与智能电网、交通低碳化、其他碳汇类、废弃物处理
-                th_deep, th_mid = 1.0, 0.3
+                th_deep, th_mid, th_light = 1.0, 0.3, 0.05
 
             th_deep_adj = th_deep * adj_ratio
             th_mid_adj = th_mid * adj_ratio
+            th_light_adj = th_light * adj_ratio
             pct_deep_adj = 4.0 * adj_ratio
             pct_mid_adj = 3.0 * adj_ratio
 
+            # 动态生成浅绿级区间文本
+            light_text = f"**{th_light_adj:.4g}** 万吨 ≤ 年减排量 < **{th_mid_adj:.4g}** 万吨" if th_light_adj > 0 else f"年减排量 < **{th_mid_adj:.4g}** 万吨"
+
+            # 纯物理换行排版，完美避免换行源码符号泄露
             st.success(f"""
                📌 **《指南》项目定量评估细则参考 (对应【{industry_type}】)**:
                {'(✨ **已触发特色产业，各项达标门槛下调 5%**)' if adj_ratio < 1.0 else ''}
@@ -215,7 +220,8 @@ if app_mode == "生态环境部门 (入口A)":
                **1. 年碳减排规模效益**:
                - 🟢 **深绿级**：年减排量 ≥ **{th_deep_adj:.4g}** 万吨
                - 🟡 **中绿级**：**{th_mid_adj:.4g}** 万吨 ≤ 年减排量 < **{th_deep_adj:.4g}** 万吨
-               - ⚪ **浅绿级**：年减排量 < **{th_mid_adj:.4g}** 万吨
+               - ⚪ **浅绿级**：{light_text}
+               {f"*( ⚠️ 注：若年减排量低于 **{th_light_adj:.4g}** 万吨，则不符合入库标准 )*" if th_light_adj > 0 else ""}
 
                **2. 碳排放强度下降幅度** (若适用):
                - 🟢 **深绿级**：下降幅度 ≥ **{pct_deep_adj:.4g}%**
@@ -238,53 +244,73 @@ if app_mode == "生态环境部门 (入口A)":
             with st.spinner('正在比对评估标准、测算投资效率并同步数据...'):
                 adj_ratio = 0.95 if feature_industry != "否" else 1.0
                 if industry_type == "集中式可再生能源发电":
-                    th_deep, th_mid = 10.0, 5.0
+                    th_deep, th_mid, th_light = 10.0, 5.0, 0.0
                 elif industry_type == "分布式可再生能源发电":
-                    th_deep, th_mid = 3.0, 1.0
+                    th_deep, th_mid, th_light = 3.0, 1.0, 0.0
                 elif industry_type == "工业节能减排":
-                    th_deep, th_mid = 5.0, 1.0
+                    th_deep, th_mid, th_light = 5.0, 1.0, 0.1
                 elif industry_type == "建筑节能与绿色建筑":
-                    th_deep, th_mid = 0.3, 0.05
+                    th_deep, th_mid, th_light = 0.3, 0.05, 0.01
                 else:
-                    th_deep, th_mid = 1.0, 0.3
+                    th_deep, th_mid, th_light = 1.0, 0.3, 0.05
 
-                th_deep_adj, th_mid_adj = th_deep * adj_ratio, th_mid * adj_ratio
+                th_deep_adj, th_mid_adj, th_light_adj = th_deep * adj_ratio, th_mid * adj_ratio, th_light * adj_ratio
                 pct_deep_adj, pct_mid_adj = 4.0 * adj_ratio, 3.0 * adj_ratio
 
-                level_val1 = 2 if val_reduction >= th_deep_adj else (1 if val_reduction >= th_mid_adj else 0)
-                level_val2 = 2 if val_decrease >= pct_deep_adj else (1 if val_decrease >= pct_mid_adj else 0)
+                level_val1 = -1
+                if val_reduction > 0:
+                    if val_reduction >= th_deep_adj:
+                        level_val1 = 2
+                    elif val_reduction >= th_mid_adj:
+                        level_val1 = 1
+                    elif val_reduction >= th_light_adj:
+                        level_val1 = 0
+
+                level_val2 = -1
+                if val_decrease > 0:
+                    if val_decrease >= pct_deep_adj:
+                        level_val2 = 2
+                    elif val_decrease >= pct_mid_adj:
+                        level_val2 = 1
+                    else:
+                        level_val2 = 0
 
                 max_level = 2 if force_deep_green else max(level_val1, level_val2)
-                final_level = "深绿级" if max_level == 2 else ("中绿级" if max_level == 1 else "浅绿级")
 
-                if val_reduction > 0:
-                    efficiency = investment / val_reduction
-                    eff_str = f"{efficiency:.2f} 万元/万吨"
+                if max_level == -1:
+                    st.error(
+                        f"⚠️ **入库拦截**：该项目填报的量化指标未达到最低入库下限标准（下限要求：{th_light_adj:.4g} 万吨），无法入库！")
                 else:
-                    eff_str = "暂无减排数据，无法测算"
+                    final_level = "深绿级" if max_level == 2 else ("中绿级" if max_level == 1 else "浅绿级")
 
-                success, error_msg = save_to_database(
-                    project_name, location, industry_type, project_status, project_year, investment,
-                    green_channel, feature_industry, val_reduction, eff_str, final_level
-                )
-
-                if success:
-                    st.success("✅ **数据审查与评级完成！评估结果如下：**")
-                    st.subheader("🏆 气候投融资项目 - 入库评级结论")
-                    if final_level == "深绿级":
-                        st.success(f"📌 此项目最终评级为：【{final_level}】")
-                    elif final_level == "中绿级":
-                        st.info(f"📌 此项目最终评级为：【{final_level}】")
+                    if val_reduction > 0:
+                        efficiency = investment / val_reduction
+                        eff_str = f"{efficiency:.2f} 万元/万吨"
                     else:
-                        st.warning(f"📌 此项目最终评级为：【{final_level}】")
+                        eff_str = "暂无减排数据，无法测算"
 
-                    st.write(f"▶ **项目名称**：{project_name}")
-                    st.write(f"▶ **项目所在地**：{location}")
-                    st.write(f"▶ **年减排量**：{val_reduction:.4f} 万吨")
-                    st.write(f"▶ **气候投资效率**：{eff_str}")
-                    st.balloons()
-                else:
-                    st.error(f"❌ **云端同步失败！请检查您的网络代理设置。详细报错：** {error_msg}")
+                    success, error_msg = save_to_database(
+                        project_name, location, industry_type, project_status, project_year, investment,
+                        green_channel, feature_industry, val_reduction, eff_str, final_level
+                    )
+
+                    if success:
+                        st.success("✅ **数据审查与评级完成！评估结果如下：**")
+                        st.subheader("🏆 气候投融资项目 - 入库评级结论")
+                        if final_level == "深绿级":
+                            st.success(f"📌 此项目最终评级为：【{final_level}】")
+                        elif final_level == "中绿级":
+                            st.info(f"📌 此项目最终评级为：【{final_level}】")
+                        else:
+                            st.warning(f"📌 此项目最终评级为：【{final_level}】")
+
+                        st.write(f"▶ **项目名称**：{project_name}")
+                        st.write(f"▶ **项目所在地**：{location}")
+                        st.write(f"▶ **年减排量**：{val_reduction:.4f} 万吨")
+                        st.write(f"▶ **气候投资效率**：{eff_str}")
+                        st.balloons()
+                    else:
+                        st.error(f"❌ **云端同步失败！请检查您的网络代理设置。详细报错：** {error_msg}")
 
 
 # ==========================================
@@ -312,7 +338,7 @@ elif app_mode == "金融机构筛选 (入口B)":
 
         with col1:
             st.markdown("##### 🏅 评级与状态")
-            # ✨ 修改点1：去除“不限”，改成和入口A一致的单选Radio组件格式
+            # 维持原有修改：严格剔除“不限”单选框，保持和入口A一致的平铺Radio
             level_filter = st.radio("项目等级筛选", ["深绿级", "中绿级", "浅绿级"], horizontal=True)
             status_filter = st.radio("项目状态", ["规划", "在建", "已建成运营"], horizontal=True)
 
@@ -331,21 +357,21 @@ elif app_mode == "金融机构筛选 (入口B)":
             st.markdown("##### 🍃 减排与规模")
             min_reduction = st.number_input("年碳减排量 (≥ 吨/年)", min_value=0.0, value=0.0, step=1000.0)
             st.caption("提示：此处输入单位为吨，系统将换算匹配入库万吨数据")
-
             invest_text = st.text_input("项目规模（投资额）：", placeholder="请输入门槛金额(万元)")
 
         with col4:
             st.markdown("##### 🔖 交易追踪")
-            ccer_filter = st.radio("是否完成碳市场注册 (CCER/VCS)", ["不限", "已注册/拟注册"], horizontal=True)
-            st.info("💡 提示：筛选结果中已自动为您核算展示【投资效率】（即单位减排量所需投资额）。")
+            # ✨ 修改点：精准恢复交易追踪的“不限”单选格式选项，同时保留拆分的已注册与拟注册
+            reg_filter = st.radio("是否完成碳市场注册 (CCER/VCS)", ["不限", "已注册", "拟注册"], horizontal=True)
+            st.info("💡 提示：系统基于入库时的绿色通道标签匹配注册意向。")
 
     # 执行过滤逻辑
     filtered_df = df.copy()
 
-    # ✨ 过滤级别 (无不限逻辑)
+    # 过滤级别
     filtered_df = filtered_df[filtered_df['初评等级(绝对)'] == level_filter]
 
-    # ✨ 过滤状态 (无不限逻辑)
+    # 过滤状态
     if '建设状态' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['建设状态'] == status_filter]
 
@@ -373,9 +399,13 @@ elif app_mode == "金融机构筛选 (入口B)":
         except ValueError:
             st.error("⚠️ 项目规模（投资额）格式不正确，请输入有效的数字！")
 
-    # 过滤碳市场
-    if ccer_filter == "已注册/拟注册" and '绿色通道' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['绿色通道'] == "可进行碳交易的项目"]
+    # ✨ 针对交易追踪注册状态进行差异化过滤（当且仅当不为“不限”时才执行拦截）
+    if reg_filter != "不限" and '绿色通道' in filtered_df.columns:
+        if reg_filter == "已注册":
+            filtered_df = filtered_df[filtered_df['绿色通道'].str.contains("可进行碳交易的项目", na=False)]
+        elif reg_filter == "拟注册":
+            # 智能映射拟注册项目标的范围
+            filtered_df = filtered_df[filtered_df['绿色通道'].str.contains("碳交易|与地方特色", na=False)]
 
     st.markdown("### 📊 筛选结果列表 (含数据管理)")
 
@@ -387,9 +417,8 @@ elif app_mode == "金融机构筛选 (入口B)":
     else:
         st.warning("🙈 未找到符合上述组合条件的项目，请尝试放宽筛选条件。")
 
-    # 定义要展示的列，并在末尾追加隐藏的 ID 列用于删除功能
     display_columns = {
-        '项目ID': '项目ID',  # 核心关联ID
+        '项目ID': '项目ID',
         '项目名称': '项目名称',
         '初评等级(绝对)': '等级',
         '行业类型': '行业',
@@ -402,24 +431,21 @@ elif app_mode == "金融机构筛选 (入口B)":
     cols_to_show = [col for col in display_columns.keys() if col in filtered_df.columns]
     display_df = filtered_df[cols_to_show].rename(columns=display_columns)
 
-    # ✨ 修改点2：在结果列表末尾追加【勾选删除】列，并启用数据编辑器
     if not display_df.empty:
         display_df['勾选删除'] = False
 
-        # 渲染带复选框的可编辑表格，同时隐藏真实项目ID以保界面美观
         edited_df = st.data_editor(
             display_df,
             column_config={
-                "项目ID": None,  # 隐藏后台ID
+                "项目ID": None,
                 "勾选删除": st.column_config.CheckboxColumn("🗑️ 勾选删除", default=False)
             },
-            disabled=[col for col in display_df.columns if col != '勾选删除'],  # 除了删除框，其他内容禁止修改
+            disabled=[col for col in display_df.columns if col != '勾选删除'],
             use_container_width=True,
             hide_index=True,
             height=400
         )
 
-        # ✨ 获取所有被勾选的行
         rows_to_delete = edited_df[edited_df['勾选删除'] == True]
 
         if not rows_to_delete.empty:
@@ -431,20 +457,17 @@ elif app_mode == "金融机构筛选 (入口B)":
                     conn = st.connection("gsheets", type=GSheetsConnection)
                     raw_data = conn.read(spreadsheet=SHEET_URL, ttl=0)
 
-                    # 剔除对应的项目ID所在行
                     updated_data = raw_data[~raw_data['项目ID'].isin(ids_to_delete)]
                     conn.update(spreadsheet=SHEET_URL, data=updated_data)
 
                     st.success("✅ 所选项目已成功从数据库移除！")
 
-                    # 强制清空缓存并立刻刷新页面以更新表格
                     load_project_data.clear()
                     st.rerun()
 
         st.markdown("<br>", unsafe_allow_html=True)
         col_dl1, col_dl2 = st.columns([1, 4])
         with col_dl1:
-            # 导出CSV时踢掉ID列和删除操作列
             csv_df = display_df.drop(columns=['项目ID', '勾选删除'], errors='ignore')
             csv_data = csv_df.to_csv(index=False).encode('utf-8-sig')
             st.download_button(
