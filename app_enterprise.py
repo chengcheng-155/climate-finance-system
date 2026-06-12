@@ -38,20 +38,30 @@ def load_excel_data():
 feature_options = load_excel_data()
 
 
-# ✨ 核心升级：读取用户本地的全国三级行政区划数据 (兼容 CSV 和 Excel)
+# ✨ 核心功能：使用相对路径，兼容本地与云端的全国三级行政区划数据加载
 @st.cache_data
 def get_region_data():
-    # 按照您的绝对路径读取
-    path_csv = r"C:\Users\80575\PyCharmMiscProject\ok_data_level3.csv"
-    path_xlsx = r"C:\Users\80575\PyCharmMiscProject\ok_data_level3.xlsx"
+    # 获取当前代码文件所在的目录路径
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # 动态组装出数据文件的绝对/相对路径
+    path_xlsx = os.path.join(current_dir, "ok_data_level3.xlsx")
+    path_csv = os.path.join(current_dir, "ok_data_level3.csv")
+
+    # 针对某些云平台（如 Streamlit Cloud）直接读取根目录的兼容处理
+    if not os.path.exists(path_xlsx) and os.path.exists("ok_data_level3.xlsx"):
+        path_xlsx = "ok_data_level3.xlsx"
+    if not os.path.exists(path_csv) and os.path.exists("ok_data_level3.csv"):
+        path_csv = "ok_data_level3.csv"
 
     df = None
-    if os.path.exists(path_csv):
-        df = pd.read_csv(path_csv)
-    elif os.path.exists(path_xlsx):
+    # 优先读取您上传的 xlsx 文件
+    if os.path.exists(path_xlsx):
         df = pd.read_excel(path_xlsx)
+    elif os.path.exists(path_csv):
+        df = pd.read_csv(path_csv)
     else:
-        return {"暂无数据 (请检查文件路径)": {"暂无数据": ["暂无数据"]}}
+        return {"暂无数据 (请检查文件是否在同一目录)": {"暂无数据": ["暂无数据"]}}
 
     try:
         region_tree = {}
@@ -133,10 +143,8 @@ def load_project_data():
         df = conn.read(spreadsheet=SHEET_URL)
         if not df.empty:
             df = df.dropna(subset=['项目ID'])
-            # 过滤掉被“一票否决”的项目
             if '一票否决(环保违规)' in df.columns:
                 df = df[df['一票否决(环保违规)'] != True]
-            # 确保数值列类型正确
             df['年碳减排量(万吨)'] = pd.to_numeric(df['年碳减排量(万吨)'], errors='coerce').fillna(0)
             df['项目投资额(万元)'] = pd.to_numeric(df['项目投资额(万元)'], errors='coerce').fillna(0)
         return df, True
