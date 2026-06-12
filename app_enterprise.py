@@ -38,6 +38,64 @@ def load_excel_data():
 feature_options = load_excel_data()
 
 
+# ✨ 核心升级：读取用户本地的全国三级行政区划数据 (兼容 CSV 和 Excel)
+@st.cache_data
+def get_region_data():
+    # 按照您的绝对路径读取
+    path_csv = r"C:\Users\80575\PyCharmMiscProject\ok_data_level3.csv"
+    path_xlsx = r"C:\Users\80575\PyCharmMiscProject\ok_data_level3.xlsx"
+
+    df = None
+    if os.path.exists(path_csv):
+        df = pd.read_csv(path_csv)
+    elif os.path.exists(path_xlsx):
+        df = pd.read_excel(path_xlsx)
+    else:
+        return {"暂无数据 (请检查文件路径)": {"暂无数据": ["暂无数据"]}}
+
+    try:
+        region_tree = {}
+
+        # 1. 按照层级拆分数据
+        provinces = df[df['deep'] == 0]
+        cities = df[df['deep'] == 1]
+        districts = df[df['deep'] == 2]
+
+        # 2. 建立 ID 到 完整名称的映射
+        prov_map = dict(zip(provinces['id'], provinces['ext_name']))
+        city_map = dict(zip(cities['id'], cities['ext_name']))
+        city_to_prov = dict(zip(cities['id'], cities['pid']))
+
+        # 3. 初始化 省 -> 市
+        for prov_id, prov_name in prov_map.items():
+            region_tree[prov_name] = {}
+
+        for city_id, city_name in city_map.items():
+            prov_id = city_to_prov.get(city_id)
+            if prov_id in prov_map:
+                prov_name = prov_map[prov_id]
+                region_tree[prov_name][city_name] = []
+
+        # 4. 挂载 区县 -> 市
+        for _, row in districts.iterrows():
+            dist_name = row['ext_name']
+            city_id = row['pid']
+
+            prov_id = city_to_prov.get(city_id)
+            if prov_id in prov_map and city_id in city_map:
+                prov_name = prov_map[prov_id]
+                city_name = city_map[city_id]
+                region_tree[prov_name][city_name].append(dist_name)
+
+        return region_tree
+    except Exception as e:
+        return {"数据解析失败": {str(e): ["请检查表格格式"]}}
+
+
+# 实例化地区字典
+region_data = get_region_data()
+
+
 def save_to_database(project_name, location, industry_type, project_status, project_year, investment,
                      green_channel, feature_industry, val_reduction, eff_str, final_level):
     try:
@@ -136,7 +194,31 @@ if app_mode == "生态环境部门 (入口A)":
     col_b1, col_b2 = st.columns(2)
     with col_b1:
         project_name = st.text_input("项目全称", placeholder="请输入项目全称")
-        location = st.text_input("项目所在地 (省/市/区县)", placeholder="例如：广东省深圳市福田区")
+
+        # ✨ 入口A：三级联动菜单 (必须全选完整)
+        st.markdown("<p style='font-size: 14px; margin-bottom: 0px;'>项目所在地 (省/市/区县)</p>",
+                    unsafe_allow_html=True)
+        col_prov, col_city, col_dist = st.columns(3)
+
+        with col_prov:
+            prov = st.selectbox("省份", ["请选择..."] + list(region_data.keys()), label_visibility="collapsed")
+
+        with col_city:
+            city_options = ["请选择..."] + list(
+                region_data[prov].keys()) if prov != "请选择..." and prov in region_data else ["请选择..."]
+            city = st.selectbox("城市", city_options, label_visibility="collapsed")
+
+        with col_dist:
+            dist_options = ["请选择..."] + region_data[prov][city] if city != "请选择..." and city in region_data.get(
+                prov, {}) else ["请选择..."]
+            dist = st.selectbox("区县", dist_options, label_visibility="collapsed")
+
+        # 必须选择完整的三级地址才能组装
+        if prov != "请选择..." and city != "请选择..." and dist != "请选择...":
+            location = f"{prov}{city}{dist}"
+        else:
+            location = ""
+
         industry_type = st.selectbox("行业类型",
                                      ["集中式可再生能源发电", "分布式可再生能源发电", "储能与智能电网",
                                       "工业节能减排", "建筑节能与绿色建筑", "交通低碳化",
@@ -209,10 +291,8 @@ if app_mode == "生态环境部门 (入口A)":
             pct_deep_adj = 4.0 * adj_ratio
             pct_mid_adj = 3.0 * adj_ratio
 
-            # 动态生成浅绿级区间文本
             light_text = f"**{th_light_adj:.4g}** 万吨 ≤ 年减排量 < **{th_mid_adj:.4g}** 万吨" if th_light_adj > 0 else f"年减排量 < **{th_mid_adj:.4g}** 万吨"
 
-            # 纯物理换行排版，完美避免换行源码符号泄露
             st.success(f"""
                📌 **《指南》项目定量评估细则参考 (对应【{industry_type}】)**:
                {'(✨ **已触发特色产业，各项达标门槛下调 5%**)' if adj_ratio < 1.0 else ''}
@@ -237,12 +317,13 @@ if app_mode == "生态环境部门 (入口A)":
         if not project_name:
             st.warning("⚠️ 请填写项目名称！")
         elif not location:
-            st.warning("⚠️ 请填写项目所在地！")
+            st.warning("⚠️ 请完整选择项目所在地的【省份 - 城市 - 区县】！")
         elif not force_deep_green and val_reduction == 0 and val_decrease == 0:
             st.warning("⚠️ 由于不符合绿色通道，您必须至少填写一项量化减排指标才能提交！")
         else:
             with st.spinner('正在比对评估标准、测算投资效率并同步数据...'):
                 adj_ratio = 0.95 if feature_industry != "否" else 1.0
+
                 if industry_type == "集中式可再生能源发电":
                     th_deep, th_mid, th_light = 10.0, 5.0, 0.0
                 elif industry_type == "分布式可再生能源发电":
@@ -338,7 +419,6 @@ elif app_mode == "金融机构筛选 (入口B)":
 
         with col1:
             st.markdown("##### 🏅 评级与状态")
-            # 维持原有修改：严格剔除“不限”单选框，保持和入口A一致的平铺Radio
             level_filter = st.radio("项目等级筛选", ["深绿级", "中绿级", "浅绿级"], horizontal=True)
             status_filter = st.radio("项目状态", ["规划", "在建", "已建成运营"], horizontal=True)
 
@@ -351,7 +431,21 @@ elif app_mode == "金融机构筛选 (入口B)":
                 "数字化赋能与支撑平台类项目"
             ]
             industry_filter = st.multiselect("行业类型", industry_options)
-            location_filter = st.text_input("地区 (省/市/区县)", placeholder="例如：广东省深圳市")
+
+            # ✨ 入口B：三级联动菜单 (带有“不限”筛选功能的嵌套列)
+            st.markdown("<p style='font-size: 14px; margin-bottom: 0px;'>地区 (省/市/区县)</p>", unsafe_allow_html=True)
+            col_b_prov, col_b_city, col_b_dist = st.columns(3)
+            with col_b_prov:
+                b_prov = st.selectbox("省份", ["不限"] + list(region_data.keys()), key="b_prov",
+                                      label_visibility="collapsed")
+            with col_b_city:
+                b_city_options = ["不限"] + list(
+                    region_data[b_prov].keys()) if b_prov != "不限" and b_prov in region_data else ["不限"]
+                b_city = st.selectbox("城市", b_city_options, key="b_city", label_visibility="collapsed")
+            with col_b_dist:
+                b_dist_options = ["不限"] + region_data[b_prov][
+                    b_city] if b_city != "不限" and b_city in region_data.get(b_prov, {}) else ["不限"]
+                b_dist = st.selectbox("区县", b_dist_options, key="b_dist", label_visibility="collapsed")
 
         with col3:
             st.markdown("##### 🍃 减排与规模")
@@ -361,21 +455,20 @@ elif app_mode == "金融机构筛选 (入口B)":
 
         with col4:
             st.markdown("##### 🔖 交易追踪")
-            # ✨ 修改点：精准恢复交易追踪的“不限”单选格式选项，同时保留拆分的已注册与拟注册
             reg_filter = st.radio("是否完成碳市场注册 (CCER/VCS)", ["不限", "已注册", "拟注册"], horizontal=True)
             st.info("💡 提示：系统基于入库时的绿色通道标签匹配注册意向。")
 
     # 执行过滤逻辑
     filtered_df = df.copy()
 
-    # 过滤级别
+    # 1. 过滤级别
     filtered_df = filtered_df[filtered_df['初评等级(绝对)'] == level_filter]
 
-    # 过滤状态
+    # 2. 过滤状态
     if '建设状态' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['建设状态'] == status_filter]
 
-    # 过滤行业
+    # 3. 过滤行业
     if industry_filter:
         ind_mask = filtered_df['行业类型'].isin(industry_filter)
         if "数字化赋能与支撑平台类项目" in industry_filter:
@@ -384,14 +477,19 @@ elif app_mode == "金融机构筛选 (入口B)":
         else:
             filtered_df = filtered_df[ind_mask]
 
-    # 过滤地区
-    if location_filter:
-        filtered_df = filtered_df[filtered_df['项目所在地'].str.contains(location_filter, na=False)]
+    # 4. ✨ 过滤地区 (基于三级联动的灵活组装字符串匹配)
+    loc_search = ""
+    if b_prov != "不限": loc_search += b_prov
+    if b_city != "不限": loc_search += b_city
+    if b_dist != "不限": loc_search += b_dist
 
-    # 过滤减排量
+    if loc_search:
+        filtered_df = filtered_df[filtered_df['项目所在地'].str.contains(loc_search, na=False)]
+
+    # 5. 过滤减排量
     filtered_df = filtered_df[filtered_df['年碳减排量(万吨)'] >= (min_reduction / 10000.0)]
 
-    # 过滤投资额
+    # 6. 过滤投资额
     if invest_text.strip():
         try:
             min_invest_val = float(invest_text.strip())
@@ -399,12 +497,11 @@ elif app_mode == "金融机构筛选 (入口B)":
         except ValueError:
             st.error("⚠️ 项目规模（投资额）格式不正确，请输入有效的数字！")
 
-    # ✨ 针对交易追踪注册状态进行差异化过滤（当且仅当不为“不限”时才执行拦截）
+    # 7. 过滤碳市场
     if reg_filter != "不限" and '绿色通道' in filtered_df.columns:
         if reg_filter == "已注册":
             filtered_df = filtered_df[filtered_df['绿色通道'].str.contains("可进行碳交易的项目", na=False)]
         elif reg_filter == "拟注册":
-            # 智能映射拟注册项目标的范围
             filtered_df = filtered_df[filtered_df['绿色通道'].str.contains("碳交易|与地方特色", na=False)]
 
     st.markdown("### 📊 筛选结果列表 (含数据管理)")
